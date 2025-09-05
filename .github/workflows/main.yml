@@ -1,0 +1,54 @@
+name: Kali-RDP
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3600
+    steps:
+      - name: Install XFCE Desktop & XRDP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp dbus-x11
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+
+      - name: Create RDP User with Static Password
+        run: |
+          if ! id "toolbox" &>/dev/null; then
+            sudo useradd -m -s /bin/bash toolbox
+            echo "toolbox:admin@123" | sudo chpasswd
+            sudo usermod -aG sudo toolbox
+          fi
+          echo "RDP_CREDS=User: toolbox | Password: admin@123" >> $GITHUB_ENV
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Establish Tailscale Connection
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=kali-gh-${GITHUB_RUN_ID}
+          TS_IP=$(tailscale ip -4)
+          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+
+      - name: Verify RDP Accessibility
+        run: |
+          echo "Tailscale IP: $TAILSCALE_IP"
+          nc -zv $TAILSCALE_IP 3389 || (echo "RDP not accessible" && exit 1)
+          echo "TCP connectivity successful!"
+
+      - name: Maintain Connection
+        run: |
+          echo "===================="
+          echo "   Kali Linux RDP   "
+          echo "===================="
+          echo "IP: $TAILSCALE_IP"
+          echo "User: toolbox"
+          echo "Pass: admin@123"
+          echo "===================="
+          while true; do
+            echo "[$(date)] RDP Active..."
+            sleep 300
+          done
